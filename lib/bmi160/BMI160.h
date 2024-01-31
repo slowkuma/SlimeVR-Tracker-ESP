@@ -557,6 +557,7 @@ class BMI160 {
         BMI160();
         void initialize(
             uint8_t addr,
+            void *wireObj = 0,
             BMI160GyroRate gyroRate = BMI160_GYRO_RATE_800HZ,
             BMI160GyroRange gyroRange = BMI160_GYRO_RANGE_500,
             BMI160DLPFMode gyroFilterMode = BMI160_DLPF_MODE_NORM,
@@ -762,6 +763,7 @@ class BMI160 {
     private:
         uint8_t buffer[14];
         uint8_t devAddr;
+        void *devWireObj;
 };
 
 #endif /* _BMI160_H_ */

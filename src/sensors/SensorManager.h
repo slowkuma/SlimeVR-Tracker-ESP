@@ -68,7 +68,7 @@ namespace SlimeVR
             uint8_t activeSCL = 0;
             uint8_t activeSDA = 0;
             bool running = false;
-            void swapI2C(uint8_t scl, uint8_t sda);
+            void *swapI2C(uint8_t scl, uint8_t sda);
             
             uint32_t m_LastBundleSentAtMicros = micros();
         };

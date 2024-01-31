@@ -56,9 +56,9 @@ namespace SlimeVR
 
             // Clear and reset I2C bus for each sensor upon startup
             I2CSCAN::clearBus(sdaPin, sclPin);
-            swapI2C(sclPin, sdaPin);
+            void *wireObj = swapI2C(sclPin, sdaPin);
 
-            if (I2CSCAN::hasDevOnBus(address)) {
+            if (I2CSCAN::hasDevOnBus(address, wireObj)) {
                 m_Logger.trace("Sensor %d found at address 0x%02X", sensorID + 1, address);
             } else {
                 if (!optional) {
@@ -113,38 +113,38 @@ namespace SlimeVR
                 break;
             }
 
+            sensor->wireObj = wireObj;
             sensor->motionSetup();
             return sensor;
         }
 
         // TODO Make it more generic in the future and move another place (abstract sensor interface)
-        void SensorManager::swapI2C(uint8_t sclPin, uint8_t sdaPin)
+        void *SensorManager::swapI2C(uint8_t sclPin, uint8_t sdaPin)
         {
-            if (sclPin != activeSCL || sdaPin != activeSDA || !running) {
-                Wire.flush();
-                #if ESP32
-                    if (running) {}
-                    else {
-                        // Reset HWI2C to avoid being affected by I2CBUS reset
-                        Wire.end();
-                    }
-                    // Disconnect pins from HWI2C
-                    pinMode(activeSCL, INPUT);
-                    pinMode(activeSDA, INPUT);
-
-                    if (running) {
-                        i2c_set_pin(I2C_NUM_0, sdaPin, sclPin, false, false, I2C_MODE_MASTER);
-                    } else {
-                        Wire.begin(static_cast<int>(sdaPin), static_cast<int>(sclPin), I2C_SPEED);
-                        Wire.setTimeOut(150);
-                    }
-                #else
-                    Wire.begin(static_cast<int>(sdaPin), static_cast<int>(sclPin));
-                #endif
-
-                activeSCL = sclPin;
-                activeSDA = sdaPin;
+            if (sclPin == PIN_IMU_SCL && sdaPin == PIN_IMU_SDA)
+            {
+                if (!running)
+                {
+                    Wire.end();
+                    Wire.begin(PIN_IMU_SDA, PIN_IMU_SCL, I2C_SPEED);
+                }
+                m_Logger.debug("Select I2C bus 0, scl: %d, sda: %d", sclPin, sdaPin);
+                return &Wire;
             }
+            #ifdef PIN_IMU_SDA1
+            if (sclPin == PIN_IMU_SCL1 && sdaPin == PIN_IMU_SDA1)
+            {
+                if (!running)
+                {
+                    Wire1.end();
+                    Wire1.begin(PIN_IMU_SDA1, PIN_IMU_SCL1, I2C_SPEED);
+                }
+                m_Logger.debug("Select I2C bus 1, scl: %d, sda: %d", sclPin, sdaPin);
+                return &Wire1;
+            }
+            #endif
+            m_Logger.debug("Unknown I2C bus, scl: %d, sda: %d", sclPin, sdaPin);
+            return 0;
         }
 
         void SensorManager::setup()
@@ -173,7 +173,11 @@ namespace SlimeVR
             // Check and scan i2c if no sensors active
             if (activeSensorCount == 0) {
                 m_Logger.error("Can't find I2C device on provided addresses, scanning for all I2C devices and returning");
-                I2CSCAN::scani2cports();
+
+                // Ignore scan for ESP32 S2
+                #if BOARD != BOARD_LOLIN_S2_MINI
+                    I2CSCAN::scani2cports();
+                #endif
             }
         }
 
@@ -182,7 +186,6 @@ namespace SlimeVR
             running = true;
             for (auto sensor : m_Sensors) {
                 if (sensor->isWorking()) {
-                    swapI2C(sensor->sclPin, sensor->sdaPin);
                     sensor->postSetup();
                 }
             }
@@ -194,7 +197,6 @@ namespace SlimeVR
             bool allIMUGood = true;
             for (auto sensor : m_Sensors) {
                 if (sensor->isWorking()) {
-                    swapI2C(sensor->sclPin, sensor->sdaPin);
                     sensor->motionLoop();
                 }
                 if (sensor->getSensorState() == SensorStatus::SENSOR_ERROR)
@@ -232,7 +234,7 @@ namespace SlimeVR
 
                 m_LastBundleSentAtMicros = now;
             #endif
-            
+
             #if PACKET_BUNDLING != PACKET_BUNDLING_DISABLED
                 networkConnection.beginBundle();
             #endif

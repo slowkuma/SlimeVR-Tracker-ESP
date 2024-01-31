@@ -110,6 +110,7 @@ protected:
 public:
     uint8_t sclPin = 0;
     uint8_t sdaPin = 0;
+    void *wireObj = 0;
 
 private:
     void printTemperatureCalibrationUnsupported();

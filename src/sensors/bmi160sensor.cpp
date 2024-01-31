@@ -82,7 +82,7 @@ void BMI160Sensor::initQMC(BMI160MagRate magRate) {
 void BMI160Sensor::motionSetup() {
     // initialize device
     imu.initialize(
-        addr,
+        addr, wireObj,
         BMI160_GYRO_RATE,
         BMI160_GYRO_RANGE,
         BMI160_GYRO_FILTER_MODE,

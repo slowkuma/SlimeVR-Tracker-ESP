@@ -42,22 +42,22 @@ THE SOFTWARE.
 
 class I2CdevMod : public I2Cdev {
     public:
-        static bool writeBits(uint8_t devAddr, uint8_t regAddr, uint8_t bitStart, uint8_t length, uint8_t data) {
+        static bool writeBits(uint8_t devAddr, uint8_t regAddr, uint8_t bitStart, uint8_t length, uint8_t data, void *wireObj = 0) {
             uint8_t b;
-            if (readByte(devAddr, regAddr, &b) != 0) {
+            if (readByte(devAddr, regAddr, &b, I2Cdev::readTimeout, wireObj) != 0) {
                 uint8_t mask = ((1 << length) - 1) << bitStart;
                 data <<= bitStart; // shift data into correct position
                 data &= mask; // zero all non-important bits in data
                 b &= ~(mask); // zero all important bits in existing byte
                 b |= data; // combine data with existing byte
-                return writeByte(devAddr, regAddr, b);
+                return writeByte(devAddr, regAddr, b, wireObj);
             } else {
                 return false;
             }
         }
-        static int8_t readBits(uint8_t devAddr, uint8_t regAddr, uint8_t bitStart, uint8_t length, uint8_t *data, uint16_t timeout=I2Cdev::readTimeout) {
+        static int8_t readBits(uint8_t devAddr, uint8_t regAddr, uint8_t bitStart, uint8_t length, uint8_t *data, uint16_t timeout=I2Cdev::readTimeout, void *wireObj = 0) {
             uint8_t count, b;
-            if ((count = readByte(devAddr, regAddr, &b, timeout)) != 0) {
+            if ((count = readByte(devAddr, regAddr, &b, timeout, wireObj)) != 0) {
                 uint8_t mask = ((1 << length) - 1) << bitStart;
                 b &= mask;
                 b >>= bitStart;
@@ -73,11 +73,13 @@ BMI160::BMI160() {};
  * This will activate the device and take it out of sleep mode (which must be done
  * after start-up).
  */
-void BMI160::initialize(uint8_t addr,
+void BMI160::initialize(uint8_t addr, void *wireObj,
     BMI160GyroRate gyroRate, BMI160GyroRange gyroRange, BMI160DLPFMode gyroFilterMode,
     BMI160AccelRate accelRate, BMI160AccelRange accelRange, BMI160DLPFMode accelFilterMode
 ) {
     devAddr = addr;
+    devWireObj = wireObj;
+
     /* Issue a soft-reset to bring the device into a clean state */
     setRegister(BMI160_RA_CMD, BMI160_CMD_SOFT_RESET);
     delay(12);
@@ -104,13 +106,13 @@ void BMI160::initialize(uint8_t addr,
     delay(BMI160_GYRO_POWERUP_DELAY_MS);
 
     /* Only PIN1 interrupts currently supported - map all interrupts to PIN1 */
-    // I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MAP_0, 0xFF);
-    // I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MAP_1, 0xF0);
-    // I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MAP_2, 0x00);
+    // I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MAP_0, 0xFF, devWireObj);
+    // I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MAP_1, 0xF0, devWireObj);
+    // I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MAP_2, 0x00, devWireObj);
 }
 
 bool BMI160::getErrReg(uint8_t* out) {
-    bool ok = I2CdevMod::readByte(devAddr, BMI160_RA_ERR, buffer) >= 0;
+    bool ok = I2CdevMod::readByte(devAddr, BMI160_RA_ERR, buffer, I2Cdev::readTimeout, devWireObj) >= 0;
     if (!ok) return false;
     *out = buffer[0];
     return true;
@@ -133,7 +135,7 @@ void BMI160::setMagRegister(uint8_t addr, uint8_t value) {
  * @see BMI160_RA_CHIP_ID
  */
 uint8_t BMI160::getDeviceID() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_CHIP_ID, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_CHIP_ID, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -156,7 +158,7 @@ bool BMI160::testConnection()
 void BMI160::setGyroRate(uint8_t rate) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_GYRO_CONF,
                    BMI160_GYRO_RATE_SEL_BIT,
-                   BMI160_GYRO_RATE_SEL_LEN, rate);
+                   BMI160_GYRO_RATE_SEL_LEN, rate, devWireObj);
 }
 
 /** Set accelerometer output data rate.
@@ -167,7 +169,7 @@ void BMI160::setGyroRate(uint8_t rate) {
 void BMI160::setAccelRate(uint8_t rate) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_ACCEL_CONF,
                    BMI160_ACCEL_RATE_SEL_BIT,
-                   BMI160_ACCEL_RATE_SEL_LEN, rate);
+                   BMI160_ACCEL_RATE_SEL_LEN, rate, devWireObj);
 }
 
 /** Set gyroscope digital low-pass filter configuration.
@@ -177,7 +179,7 @@ void BMI160::setAccelRate(uint8_t rate) {
 void BMI160::setGyroDLPFMode(uint8_t mode) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_GYRO_CONF,
                           BMI160_GYRO_DLPF_SEL_BIT,
-                          BMI160_GYRO_DLPF_SEL_LEN, mode);
+                          BMI160_GYRO_DLPF_SEL_LEN, mode, devWireObj);
 }
 
 /** Set accelerometer digital low-pass filter configuration.
@@ -187,7 +189,7 @@ void BMI160::setGyroDLPFMode(uint8_t mode) {
 void BMI160::setAccelDLPFMode(uint8_t mode) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_ACCEL_CONF,
                           BMI160_ACCEL_DLPF_SEL_BIT,
-                          BMI160_ACCEL_DLPF_SEL_LEN, mode);
+                          BMI160_ACCEL_DLPF_SEL_LEN, mode, devWireObj);
 }
 
 /** Get full-scale gyroscope range.
@@ -209,7 +211,7 @@ void BMI160::setAccelDLPFMode(uint8_t mode) {
 uint8_t BMI160::getFullScaleGyroRange() {
     I2CdevMod::readBits(devAddr, BMI160_RA_GYRO_RANGE,
                          BMI160_GYRO_RANGE_SEL_BIT,
-                         BMI160_GYRO_RANGE_SEL_LEN, buffer);
+                         BMI160_GYRO_RANGE_SEL_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -220,7 +222,7 @@ uint8_t BMI160::getFullScaleGyroRange() {
 void BMI160::setFullScaleGyroRange(uint8_t range) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_GYRO_RANGE,
                    BMI160_GYRO_RANGE_SEL_BIT,
-                   BMI160_GYRO_RANGE_SEL_LEN, range);
+                   BMI160_GYRO_RANGE_SEL_LEN, range, devWireObj);
 }
 
 /** Get full-scale accelerometer range.
@@ -241,7 +243,7 @@ void BMI160::setFullScaleGyroRange(uint8_t range) {
 uint8_t BMI160::getFullScaleAccelRange() {
     I2CdevMod::readBits(devAddr, BMI160_RA_ACCEL_RANGE,
                          BMI160_ACCEL_RANGE_SEL_BIT,
-                         BMI160_ACCEL_RANGE_SEL_LEN, buffer);
+                         BMI160_ACCEL_RANGE_SEL_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -253,7 +255,7 @@ uint8_t BMI160::getFullScaleAccelRange() {
 void BMI160::setFullScaleAccelRange(uint8_t range) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_ACCEL_RANGE,
                    BMI160_ACCEL_RANGE_SEL_BIT,
-                   BMI160_ACCEL_RANGE_SEL_LEN, range);
+                   BMI160_ACCEL_RANGE_SEL_LEN, range, devWireObj);
 }
 
 /** Get accelerometer offset compensation enabled value.
@@ -263,7 +265,7 @@ void BMI160::setFullScaleAccelRange(uint8_t range) {
 bool BMI160::getAccelOffsetEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_OFFSET_6,
                             BMI160_ACC_OFFSET_EN,
-                            1, buffer);
+                            1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -274,7 +276,7 @@ bool BMI160::getAccelOffsetEnabled() {
 void BMI160::setAccelOffsetEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_OFFSET_6,
                    BMI160_ACC_OFFSET_EN,
-                   1, enabled ? 0x1 : 0);
+                   1, enabled ? 0x1 : 0, devWireObj);
 }
 
 /** Execute internal calibration to generate Accelerometer X-Axis offset value.
@@ -306,12 +308,12 @@ void BMI160::autoCalibrateXAccelOffset(int target) {
     else
         return;  /* Invalid target value */
 
-    I2CdevMod::writeByte(devAddr, BMI160_RA_FOC_CONF, foc_conf);
-    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_START_FOC);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_FOC_CONF, foc_conf, devWireObj);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_START_FOC, devWireObj);
     do {
         I2CdevMod::readBits(devAddr, BMI160_RA_STATUS,
                            BMI160_STATUS_FOC_RDY,
-                           1, buffer);
+                           1, buffer, I2Cdev::readTimeout, devWireObj);
         delay(1);
     } while (!buffer[0]);
 }
@@ -345,12 +347,12 @@ void BMI160::autoCalibrateYAccelOffset(int target) {
     else
         return;  /* Invalid target value */
 
-    I2CdevMod::writeByte(devAddr, BMI160_RA_FOC_CONF, foc_conf);
-    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_START_FOC);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_FOC_CONF, foc_conf, devWireObj);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_START_FOC, devWireObj);
     do {
         I2CdevMod::readBits(devAddr, BMI160_RA_STATUS,
                            BMI160_STATUS_FOC_RDY,
-                           1, buffer);
+                           1, buffer, I2Cdev::readTimeout, devWireObj);
         delay(1);
     } while (!buffer[0]);
 }
@@ -384,12 +386,12 @@ void BMI160::autoCalibrateZAccelOffset(int target) {
     else
         return;  /* Invalid target value */
 
-    I2CdevMod::writeByte(devAddr, BMI160_RA_FOC_CONF, foc_conf);
-    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_START_FOC);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_FOC_CONF, foc_conf, devWireObj);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_START_FOC, devWireObj);
     do {
         I2CdevMod::readBits(devAddr, BMI160_RA_STATUS,
                            BMI160_STATUS_FOC_RDY,
-                           1, buffer);
+                           1, buffer, I2Cdev::readTimeout, devWireObj);
         delay(1);
     } while (!buffer[0]);
 }
@@ -400,7 +402,7 @@ void BMI160::autoCalibrateZAccelOffset(int target) {
  * @see BMI160_RA_OFFSET_0
  */
 int8_t BMI160::getXAccelOffset() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_0, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_0, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -411,7 +413,7 @@ int8_t BMI160::getXAccelOffset() {
  * @see BMI160_RA_OFFSET_0
  */
 void BMI160::setXAccelOffset(int8_t offset) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_0, offset);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_0, offset, devWireObj);
     getAccelerationX(); /* Read and discard the next data value */
 }
 
@@ -421,7 +423,7 @@ void BMI160::setXAccelOffset(int8_t offset) {
  * @see BMI160_RA_OFFSET_1
  */
 int8_t BMI160::getYAccelOffset() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_1, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_1, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -432,7 +434,7 @@ int8_t BMI160::getYAccelOffset() {
  * @see BMI160_RA_OFFSET_1
  */
 void BMI160::setYAccelOffset(int8_t offset) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_1, offset);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_1, offset, devWireObj);
     getAccelerationY(); /* Read and discard the next data value */
 }
 
@@ -442,7 +444,7 @@ void BMI160::setYAccelOffset(int8_t offset) {
  * @see BMI160_RA_OFFSET_2
  */
 int8_t BMI160::getZAccelOffset() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_2, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -453,7 +455,7 @@ int8_t BMI160::getZAccelOffset() {
  * @see BMI160_RA_OFFSET_2
  */
 void BMI160::setZAccelOffset(int8_t offset) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_2, offset);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_2, offset, devWireObj);
     getAccelerationZ(); /* Read and discard the next data value */
 }
 
@@ -464,7 +466,7 @@ void BMI160::setZAccelOffset(int8_t offset) {
 bool BMI160::getGyroOffsetEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_OFFSET_6,
                             BMI160_GYR_OFFSET_EN,
-                            1, buffer);
+                            1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -475,7 +477,7 @@ bool BMI160::getGyroOffsetEnabled() {
 void BMI160::setGyroOffsetEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_OFFSET_6,
                       BMI160_GYR_OFFSET_EN,
-                      1, enabled ? 0x1 : 0);
+                      1, enabled ? 0x1 : 0, devWireObj);
 }
 
 /** Execute internal calibration to generate Gyro offset values.
@@ -496,12 +498,12 @@ void BMI160::setGyroOffsetEnabled(bool enabled) {
  */
 void BMI160::autoCalibrateGyroOffset() {
     uint8_t foc_conf = (1 << BMI160_FOC_GYR_EN);
-    I2CdevMod::writeByte(devAddr, BMI160_RA_FOC_CONF, foc_conf);
-    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_START_FOC);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_FOC_CONF, foc_conf, devWireObj);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_START_FOC, devWireObj);
     do {
         I2CdevMod::readBits(devAddr, BMI160_RA_STATUS,
                            BMI160_STATUS_FOC_RDY,
-                           1, buffer);
+                           1, buffer, I2Cdev::readTimeout, devWireObj);
         delay(1);
     } while (!buffer[0]);
 }
@@ -513,12 +515,12 @@ void BMI160::autoCalibrateGyroOffset() {
  * @see BMI160_RA_OFFSET_6
  */
 int16_t BMI160::getXGyroOffset() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_3, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_3, buffer, I2Cdev::readTimeout, devWireObj);
     int16_t offset = buffer[0];
     I2CdevMod::readBits(devAddr, BMI160_RA_OFFSET_6,
                      BMI160_GYR_OFFSET_X_MSB_BIT,
                      BMI160_GYR_OFFSET_X_MSB_LEN,
-                     buffer);
+                     buffer, I2Cdev::readTimeout, devWireObj);
     offset |= (int16_t)(buffer[0]) << 8;
     return BMI160_SIGN_EXTEND(offset, 10);
 }
@@ -531,10 +533,10 @@ int16_t BMI160::getXGyroOffset() {
  * @see BMI160_RA_OFFSET_6
  */
 void BMI160::setXGyroOffset(int16_t offset) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_3, offset);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_3, offset, devWireObj);
     I2CdevMod::writeBits(devAddr, BMI160_RA_OFFSET_6,
                    BMI160_GYR_OFFSET_X_MSB_BIT,
-                   BMI160_GYR_OFFSET_X_MSB_LEN, offset >> 8);
+                   BMI160_GYR_OFFSET_X_MSB_LEN, offset >> 8, devWireObj);
     getRotationX(); /* Read and discard the next data value */
 }
 
@@ -545,11 +547,11 @@ void BMI160::setXGyroOffset(int16_t offset) {
  * @see BMI160_RA_OFFSET_6
  */
 int16_t BMI160::getYGyroOffset() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_4, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_4, buffer, I2Cdev::readTimeout, devWireObj);
     int16_t offset = buffer[0];
     I2CdevMod::readBits(devAddr, BMI160_RA_OFFSET_6,
                      BMI160_GYR_OFFSET_Y_MSB_BIT,
-                     BMI160_GYR_OFFSET_Y_MSB_LEN, buffer);
+                     BMI160_GYR_OFFSET_Y_MSB_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     offset |= (int16_t)(buffer[0]) << 8;
     return BMI160_SIGN_EXTEND(offset, 10);
 }
@@ -562,10 +564,10 @@ int16_t BMI160::getYGyroOffset() {
  * @see BMI160_RA_OFFSET_6
  */
 void BMI160::setYGyroOffset(int16_t offset) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_4, offset);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_4, offset, devWireObj);
     I2CdevMod::writeBits(devAddr, BMI160_RA_OFFSET_6,
                    BMI160_GYR_OFFSET_Y_MSB_BIT,
-                   BMI160_GYR_OFFSET_Y_MSB_LEN, offset >> 8);
+                   BMI160_GYR_OFFSET_Y_MSB_LEN, offset >> 8, devWireObj);
     getRotationY(); /* Read and discard the next data value */
 }
 
@@ -576,11 +578,11 @@ void BMI160::setYGyroOffset(int16_t offset) {
  * @see BMI160_RA_OFFSET_6
  */
 int16_t BMI160::getZGyroOffset() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_5, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_OFFSET_5, buffer, I2Cdev::readTimeout, devWireObj);
     int16_t offset = buffer[0];
     I2CdevMod::readBits(devAddr, BMI160_RA_OFFSET_6,
                      BMI160_GYR_OFFSET_Z_MSB_BIT,
-                     BMI160_GYR_OFFSET_Z_MSB_LEN, buffer);
+                     BMI160_GYR_OFFSET_Z_MSB_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     offset |= (int16_t)(buffer[0]) << 8;
     return BMI160_SIGN_EXTEND(offset, 10);
 }
@@ -593,10 +595,10 @@ int16_t BMI160::getZGyroOffset() {
  * @see BMI160_RA_OFFSET_6
  */
 void BMI160::setZGyroOffset(int16_t offset) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_5, offset);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_OFFSET_5, offset, devWireObj);
     I2CdevMod::writeBits(devAddr, BMI160_RA_OFFSET_6,
                    BMI160_GYR_OFFSET_Z_MSB_BIT,
-                   BMI160_GYR_OFFSET_Z_MSB_LEN, offset >> 8);
+                   BMI160_GYR_OFFSET_Z_MSB_LEN, offset >> 8, devWireObj);
     getRotationZ(); /* Read and discard the next data value */
 }
 
@@ -616,7 +618,7 @@ void BMI160::setZGyroOffset(int16_t offset) {
  * @see BMI160_RA_INT_LOWHIGH_1
  */
 uint8_t BMI160::getFreefallDetectionThreshold() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_LOWHIGH_1, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_LOWHIGH_1, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -626,7 +628,7 @@ uint8_t BMI160::getFreefallDetectionThreshold() {
  * @see BMI160_RA_INT_LOWHIGH_1
  */
 void BMI160::setFreefallDetectionThreshold(uint8_t threshold) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_LOWHIGH_1, threshold);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_LOWHIGH_1, threshold, devWireObj);
 }
 
 /** Get free-fall event duration threshold.
@@ -641,7 +643,7 @@ void BMI160::setFreefallDetectionThreshold(uint8_t threshold) {
  * @see BMI160_RA_INT_LOWHIGH_0
  */
 uint8_t BMI160::getFreefallDetectionDuration() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_LOWHIGH_0, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_LOWHIGH_0, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -651,7 +653,7 @@ uint8_t BMI160::getFreefallDetectionDuration() {
  * @see BMI160_RA_INT_LOWHIGH_0
  */
 void BMI160::setFreefallDetectionDuration(uint8_t duration) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_LOWHIGH_0, duration);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_LOWHIGH_0, duration, devWireObj);
 }
 
 /** Get shock event acceleration threshold.
@@ -681,7 +683,7 @@ void BMI160::setFreefallDetectionDuration(uint8_t duration) {
  * @see BMI160_RA_INT_LOWHIGH_4
  */
 uint8_t BMI160::getShockDetectionThreshold() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_LOWHIGH_4, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_LOWHIGH_4, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -691,7 +693,7 @@ uint8_t BMI160::getShockDetectionThreshold() {
  * @see BMI160_RA_INT_LOWHIGH_4
  */
 void BMI160::setShockDetectionThreshold(uint8_t threshold) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_LOWHIGH_4, threshold);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_LOWHIGH_4, threshold, devWireObj);
 }
 
 /** Get shock event duration threshold.
@@ -706,7 +708,7 @@ void BMI160::setShockDetectionThreshold(uint8_t threshold) {
  * @see BMI160_RA_INT_LOWHIGH_3
  */
 uint8_t BMI160::getShockDetectionDuration() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_LOWHIGH_3, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_LOWHIGH_3, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -716,7 +718,7 @@ uint8_t BMI160::getShockDetectionDuration() {
  * @see BMI160_RA_INT_LOWHIGH_3
  */
 void BMI160::setShockDetectionDuration(uint8_t duration) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_LOWHIGH_3, duration);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_LOWHIGH_3, duration, devWireObj);
 }
 
 /** Get Step Detection mode.
@@ -735,9 +737,9 @@ void BMI160::setShockDetectionDuration(uint8_t duration) {
 uint8_t BMI160::getStepDetectionMode() {
     uint8_t ret_step_conf0, ret_min_step_buf;
 
-    I2CdevMod::readByte(devAddr, BMI160_RA_STEP_CONF_0, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_STEP_CONF_0, buffer, I2Cdev::readTimeout, devWireObj);
     ret_step_conf0 = buffer[0];
-    I2CdevMod::readByte(devAddr, BMI160_RA_STEP_CONF_1, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_STEP_CONF_1, buffer, I2Cdev::readTimeout, devWireObj);
     ret_min_step_buf = buffer[0];
 
     if ((ret_step_conf0 == BMI160_RA_STEP_CONF_0_NOR) && (ret_min_step_buf == BMI160_RA_STEP_CONF_1_NOR))
@@ -787,10 +789,10 @@ void BMI160::setStepDetectionMode(BMI160StepMode mode) {
         return;
     };
 
-    I2CdevMod::writeByte(devAddr, BMI160_RA_STEP_CONF_0, step_conf0);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_STEP_CONF_0, step_conf0, devWireObj);
     I2CdevMod::writeBits(devAddr, BMI160_RA_STEP_CONF_1,
                    BMI160_STEP_BUF_MIN_BIT,
-                   BMI160_STEP_BUF_MIN_LEN, min_step_buf);
+                   BMI160_STEP_BUF_MIN_LEN, min_step_buf, devWireObj);
 }
 
 
@@ -809,7 +811,7 @@ void BMI160::setStepDetectionMode(BMI160StepMode mode) {
 bool BMI160::getStepCountEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_STEP_CONF_1,
                      BMI160_STEP_CNT_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -823,7 +825,7 @@ bool BMI160::getStepCountEnabled() {
 void BMI160::setStepCountEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_STEP_CONF_1,
                       BMI160_STEP_CNT_EN_BIT,
-                      1, enabled ? 0x1 : 0);
+                      1, enabled ? 0x1 : 0, devWireObj);
 }
 
 
@@ -837,7 +839,7 @@ void BMI160::setStepCountEnabled(bool enabled) {
  * @see BMI160_RA_STEP_CNT_L
  */
 uint16_t BMI160::getStepCount() {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_STEP_CNT_L, 2, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_STEP_CNT_L, 2, buffer, I2Cdev::readTimeout, devWireObj);
     return (((uint16_t)buffer[1]) << 8) | buffer[0];
 }
 
@@ -847,7 +849,7 @@ uint16_t BMI160::getStepCount() {
  * @see BMI160_RA_CMD
  */
 void BMI160::resetStepCount() {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_STEP_CNT_CLR);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_STEP_CNT_CLR, devWireObj);
 }
 
 /** Get motion detection event acceleration threshold.
@@ -882,7 +884,7 @@ void BMI160::resetStepCount() {
  * @see BMI160_RA_INT_MOTION_1
  */
 uint8_t BMI160::getMotionDetectionThreshold() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_MOTION_1, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_MOTION_1, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -892,7 +894,7 @@ uint8_t BMI160::getMotionDetectionThreshold() {
  * @see BMI160_RA_INT_MOTION_1
  */
 void BMI160::setMotionDetectionThreshold(uint8_t threshold) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MOTION_1, threshold);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MOTION_1, threshold, devWireObj);
 }
 
 /** Get motion detection event duration threshold.
@@ -915,7 +917,7 @@ void BMI160::setMotionDetectionThreshold(uint8_t threshold) {
 uint8_t BMI160::getMotionDetectionDuration() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_MOTION_0,
                      BMI160_ANYMOTION_DUR_BIT,
-                     BMI160_ANYMOTION_DUR_LEN, buffer);
+                     BMI160_ANYMOTION_DUR_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return 1 + buffer[0];
 }
 
@@ -927,7 +929,7 @@ uint8_t BMI160::getMotionDetectionDuration() {
 void BMI160::setMotionDetectionDuration(uint8_t samples) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_MOTION_0,
                    BMI160_ANYMOTION_DUR_BIT,
-                   BMI160_ANYMOTION_DUR_LEN, samples - 1);
+                   BMI160_ANYMOTION_DUR_LEN, samples - 1, devWireObj);
 }
 
 /** Get zero motion detection event acceleration threshold.
@@ -961,7 +963,7 @@ void BMI160::setMotionDetectionDuration(uint8_t samples) {
  * @see BMI160_RA_INT_MOTION_2
  */
 uint8_t BMI160::getZeroMotionDetectionThreshold() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_MOTION_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_MOTION_2, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -971,7 +973,7 @@ uint8_t BMI160::getZeroMotionDetectionThreshold() {
  * @see BMI160_RA_INT_MOTION_2
  */
 void BMI160::setZeroMotionDetectionThreshold(uint8_t threshold) {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MOTION_2, threshold);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_INT_MOTION_2, threshold, devWireObj);
 }
 
 /** Get zero motion detection event duration threshold.
@@ -1002,7 +1004,7 @@ void BMI160::setZeroMotionDetectionThreshold(uint8_t threshold) {
 uint8_t BMI160::getZeroMotionDetectionDuration() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_MOTION_0,
                      BMI160_NOMOTION_DUR_BIT,
-                     BMI160_NOMOTION_DUR_LEN, buffer);
+                     BMI160_NOMOTION_DUR_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -1019,7 +1021,7 @@ uint8_t BMI160::getZeroMotionDetectionDuration() {
 void BMI160::setZeroMotionDetectionDuration(uint8_t duration) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_MOTION_0,
                    BMI160_NOMOTION_DUR_BIT,
-                   BMI160_NOMOTION_DUR_LEN, duration);
+                   BMI160_NOMOTION_DUR_LEN, duration, devWireObj);
 }
 
 /** Get Tap event acceleration threshold.
@@ -1050,7 +1052,7 @@ void BMI160::setZeroMotionDetectionDuration(uint8_t duration) {
 uint8_t BMI160::getTapDetectionThreshold() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_TAP_1,
                      BMI160_TAP_THRESH_BIT,
-                     BMI160_TAP_THRESH_LEN, buffer);
+                     BMI160_TAP_THRESH_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -1062,7 +1064,7 @@ uint8_t BMI160::getTapDetectionThreshold() {
 void BMI160::setTapDetectionThreshold(uint8_t threshold) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_TAP_1,
                    BMI160_TAP_THRESH_BIT,
-                   BMI160_TAP_THRESH_LEN, threshold);
+                   BMI160_TAP_THRESH_LEN, threshold, devWireObj);
 }
 
 /** Get tap shock detection duration.
@@ -1088,7 +1090,7 @@ void BMI160::setTapDetectionThreshold(uint8_t threshold) {
 bool BMI160::getTapShockDuration() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_TAP_0,
                      BMI160_TAP_SHOCK_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1101,7 +1103,7 @@ bool BMI160::getTapShockDuration() {
 void BMI160::setTapShockDuration(bool duration) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_TAP_0,
                    BMI160_TAP_SHOCK_BIT,
-                   1, duration ? 0x1 : 0);
+                   1, duration ? 0x1 : 0, devWireObj);
 }
 
 /** Get tap quiet duration threshold.
@@ -1127,7 +1129,7 @@ void BMI160::setTapShockDuration(bool duration) {
 bool BMI160::getTapQuietDuration() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_TAP_0,
                      BMI160_TAP_QUIET_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1140,7 +1142,7 @@ bool BMI160::getTapQuietDuration() {
 void BMI160::setTapQuietDuration(bool duration) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_TAP_0,
                    BMI160_TAP_QUIET_BIT,
-                   1, duration ? 0x1 : 0);
+                   1, duration ? 0x1 : 0, devWireObj);
 }
 
 /** Get double-tap detection time window length.
@@ -1173,7 +1175,7 @@ void BMI160::setTapQuietDuration(bool duration) {
 uint8_t BMI160::getDoubleTapDetectionDuration() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_TAP_0,
                      BMI160_TAP_DUR_BIT,
-                     BMI160_TAP_DUR_LEN, buffer);
+                     BMI160_TAP_DUR_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -1186,7 +1188,7 @@ uint8_t BMI160::getDoubleTapDetectionDuration() {
 void BMI160::setDoubleTapDetectionDuration(uint8_t duration) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_TAP_0,
                    BMI160_TAP_DUR_BIT,
-                   BMI160_TAP_DUR_LEN, duration);
+                   BMI160_TAP_DUR_LEN, duration, devWireObj);
 }
 
 /** Get Free Fall interrupt enabled status.
@@ -1198,7 +1200,7 @@ void BMI160::setDoubleTapDetectionDuration(uint8_t duration) {
 bool BMI160::getIntFreefallEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_EN_1,
                      BMI160_LOW_G_EN_BIT,
-                     BMI160_LOW_G_EN_LEN, buffer);
+                     BMI160_LOW_G_EN_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1211,7 +1213,7 @@ bool BMI160::getIntFreefallEnabled() {
 void BMI160::setIntFreefallEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_EN_1,
                    BMI160_LOW_G_EN_BIT,
-                   BMI160_LOW_G_EN_LEN, enabled ? 0x1 : 0);
+                   BMI160_LOW_G_EN_LEN, enabled ? 0x1 : 0, devWireObj);
 }
 
 /** Get Shock interrupt enabled status.
@@ -1223,7 +1225,7 @@ void BMI160::setIntFreefallEnabled(bool enabled) {
 bool BMI160::getIntShockEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_EN_1,
                      BMI160_HIGH_G_EN_BIT,
-                     BMI160_HIGH_G_EN_LEN, buffer);
+                     BMI160_HIGH_G_EN_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1236,7 +1238,7 @@ bool BMI160::getIntShockEnabled() {
 void BMI160::setIntShockEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_EN_1,
                    BMI160_HIGH_G_EN_BIT,
-                   BMI160_HIGH_G_EN_LEN, enabled ? 0x7 : 0x0);
+                   BMI160_HIGH_G_EN_LEN, enabled ? 0x7 : 0x0, devWireObj);
 }
 
 /** Get Step interrupt enabled status.
@@ -1248,7 +1250,7 @@ void BMI160::setIntShockEnabled(bool enabled) {
 bool BMI160::getIntStepEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_EN_2,
                      BMI160_STEP_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1261,7 +1263,7 @@ bool BMI160::getIntStepEnabled() {
 void BMI160::setIntStepEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_EN_2,
                    BMI160_STEP_EN_BIT,
-                   1, enabled ? 0x1 : 0x0);
+                   1, enabled ? 0x1 : 0x0, devWireObj);
 }
 
 /** Get Motion Detection interrupt enabled status.
@@ -1273,7 +1275,7 @@ void BMI160::setIntStepEnabled(bool enabled) {
 bool BMI160::getIntMotionEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_EN_0,
                      BMI160_ANYMOTION_EN_BIT,
-                     BMI160_ANYMOTION_EN_LEN, buffer);
+                     BMI160_ANYMOTION_EN_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1287,7 +1289,7 @@ void BMI160::setIntMotionEnabled(bool enabled) {
     /* Enable for all 3 axes */
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_EN_0,
                    BMI160_ANYMOTION_EN_BIT,
-                   BMI160_ANYMOTION_EN_LEN, enabled ? 0x7 : 0x0);
+                   BMI160_ANYMOTION_EN_LEN, enabled ? 0x7 : 0x0, devWireObj);
 }
 
 /** Get Zero Motion Detection interrupt enabled status.
@@ -1299,7 +1301,7 @@ void BMI160::setIntMotionEnabled(bool enabled) {
 bool BMI160::getIntZeroMotionEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_EN_2,
                      BMI160_NOMOTION_EN_BIT,
-                     BMI160_NOMOTION_EN_LEN, buffer);
+                     BMI160_NOMOTION_EN_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1315,12 +1317,12 @@ void BMI160::setIntZeroMotionEnabled(bool enabled) {
         /* Select No-Motion detection mode */
         I2CdevMod::writeBits(devAddr, BMI160_RA_INT_MOTION_3,
                        BMI160_NOMOTION_SEL_BIT,
-                       BMI160_NOMOTION_SEL_LEN, 0x1);
+                       BMI160_NOMOTION_SEL_LEN, 0x1, devWireObj);
     }
     /* Enable for all 3 axes */
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_EN_2,
                    BMI160_NOMOTION_EN_BIT,
-                   BMI160_NOMOTION_EN_LEN, enabled ? 0x7 : 0x0);
+                   BMI160_NOMOTION_EN_LEN, enabled ? 0x7 : 0x0, devWireObj);
 }
 
 /** Get Tap Detection interrupt enabled status.
@@ -1332,7 +1334,7 @@ void BMI160::setIntZeroMotionEnabled(bool enabled) {
 bool BMI160::getIntTapEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_EN_0,
                      BMI160_S_TAP_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1345,7 +1347,7 @@ bool BMI160::getIntTapEnabled() {
 void BMI160::setIntTapEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_EN_0,
                    BMI160_S_TAP_EN_BIT,
-                   1, enabled ? 0x1 : 0);
+                   1, enabled ? 0x1 : 0, devWireObj);
 }
 
 /** Get Tap Detection interrupt enabled status.
@@ -1357,7 +1359,7 @@ void BMI160::setIntTapEnabled(bool enabled) {
 bool BMI160::getIntDoubleTapEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_EN_0,
                      BMI160_D_TAP_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1370,7 +1372,7 @@ bool BMI160::getIntDoubleTapEnabled() {
 void BMI160::setIntDoubleTapEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_EN_0,
                    BMI160_D_TAP_EN_BIT,
-                   1, enabled ? 0x1 : 0);
+                   1, enabled ? 0x1 : 0, devWireObj);
 }
 
 /** Get FIFO Buffer Full interrupt enabled status.
@@ -1382,7 +1384,7 @@ void BMI160::setIntDoubleTapEnabled(bool enabled) {
 bool BMI160::getIntFIFOBufferFullEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_EN_1,
                      BMI160_FFULL_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1395,7 +1397,7 @@ bool BMI160::getIntFIFOBufferFullEnabled() {
 void BMI160::setIntFIFOBufferFullEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_EN_1,
                    BMI160_FFULL_EN_BIT,
-                   1, enabled ? 0x1 : 0x0);
+                   1, enabled ? 0x1 : 0x0, devWireObj);
 }
 
 /** Get Data Ready interrupt enabled setting.
@@ -1408,7 +1410,7 @@ void BMI160::setIntFIFOBufferFullEnabled(bool enabled) {
 bool BMI160::getIntDataReadyEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_EN_1,
                      BMI160_DRDY_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1421,7 +1423,7 @@ bool BMI160::getIntDataReadyEnabled() {
 void BMI160::setIntDataReadyEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_EN_1,
                    BMI160_DRDY_EN_BIT,
-                   1, enabled ? 0x1 : 0x0);
+                   1, enabled ? 0x1 : 0x0, devWireObj);
 }
 
 /** Get accelerometer FIFO enabled value.
@@ -1433,7 +1435,7 @@ void BMI160::setIntDataReadyEnabled(bool enabled) {
 bool BMI160::getAccelFIFOEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_FIFO_CONFIG_1,
                      BMI160_FIFO_ACC_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1445,7 +1447,7 @@ bool BMI160::getAccelFIFOEnabled() {
 void BMI160::setAccelFIFOEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_FIFO_CONFIG_1,
                    BMI160_FIFO_ACC_EN_BIT,
-                   1, enabled ? 0x1 : 0);
+                   1, enabled ? 0x1 : 0, devWireObj);
 }
 
 /** Get gyroscope FIFO enabled value.
@@ -1457,7 +1459,7 @@ void BMI160::setAccelFIFOEnabled(bool enabled) {
 bool BMI160::getGyroFIFOEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_FIFO_CONFIG_1,
                      BMI160_FIFO_GYR_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1469,7 +1471,7 @@ bool BMI160::getGyroFIFOEnabled() {
 void BMI160::setGyroFIFOEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_FIFO_CONFIG_1,
                    BMI160_FIFO_GYR_EN_BIT,
-                   1, enabled ? 0x1 : 0);
+                   1, enabled ? 0x1 : 0, devWireObj);
 }
 
 
@@ -1482,7 +1484,7 @@ void BMI160::setGyroFIFOEnabled(bool enabled) {
 bool BMI160::getMagFIFOEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_FIFO_CONFIG_1,
                      BMI160_FIFO_MAG_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1494,7 +1496,7 @@ bool BMI160::getMagFIFOEnabled() {
 void BMI160::setMagFIFOEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_FIFO_CONFIG_1,
                    BMI160_FIFO_MAG_EN_BIT,
-                   1, enabled ? 0x1 : 0);
+                   1, enabled ? 0x1 : 0, devWireObj);
 }
 
 /** Get current FIFO buffer size.
@@ -1510,7 +1512,7 @@ void BMI160::setMagFIFOEnabled(bool enabled) {
  * @see BMI160_RA_FIFO_LENGTH_0
  */
 bool BMI160::getFIFOCount(uint16_t* outCount) {
-    bool ok = I2CdevMod::readBytes(devAddr, BMI160_RA_FIFO_LENGTH_0, 2, buffer) >= 0;
+    bool ok = I2CdevMod::readBytes(devAddr, BMI160_RA_FIFO_LENGTH_0, 2, buffer, I2Cdev::readTimeout, devWireObj) >= 0;
     if (!ok) return false;
     *outCount = (((int16_t)buffer[1]) << 8) | buffer[0];
     return ok;
@@ -1524,7 +1526,7 @@ bool BMI160::getFIFOCount(uint16_t* outCount) {
  * @see BMI160_CMD_FIFO_FLUSH
  */
 void BMI160::resetFIFO() {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_FIFO_FLUSH);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_FIFO_FLUSH, devWireObj);
 }
 
 /** Reset the Interrupt controller.
@@ -1534,7 +1536,7 @@ void BMI160::resetFIFO() {
  * @see BMI160_CMD_FIFO_FLUSH
  */
 void BMI160::resetInterrupt() {
-    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_INT_RESET);
+    I2CdevMod::writeByte(devAddr, BMI160_RA_CMD, BMI160_CMD_INT_RESET, devWireObj);
 }
 
 /** Get FIFO Header-Mode enabled status.
@@ -1553,7 +1555,7 @@ void BMI160::resetInterrupt() {
 bool BMI160::getFIFOHeaderModeEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_FIFO_CONFIG_1,
                      BMI160_FIFO_HEADER_EN_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1566,7 +1568,7 @@ bool BMI160::getFIFOHeaderModeEnabled() {
 void BMI160::setFIFOHeaderModeEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_FIFO_CONFIG_1,
                    BMI160_FIFO_HEADER_EN_BIT,
-                   1, enabled ? 0x1 : 0);
+                   1, enabled ? 0x1 : 0, devWireObj);
 }
 
 /** Get data frames from FIFO buffer.
@@ -1597,7 +1599,7 @@ void BMI160::setFIFOHeaderModeEnabled(bool enabled) {
  */
 bool BMI160::getFIFOBytes(uint8_t *data, uint16_t length) {
     if (!length) return true;
-    bool ok = I2CdevMod::readBytes(devAddr, BMI160_RA_FIFO_DATA, length, data) >= 0;
+    bool ok = I2CdevMod::readBytes(devAddr, BMI160_RA_FIFO_DATA, length, data, I2Cdev::readTimeout, devWireObj) >= 0;
     return ok;
 }
 
@@ -1608,7 +1610,7 @@ bool BMI160::getFIFOBytes(uint8_t *data, uint16_t length) {
  * @see BMI160_RA_INT_STATUS_0
  */
 uint8_t BMI160::getIntStatus0() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_0, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_0, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -1619,7 +1621,7 @@ uint8_t BMI160::getIntStatus0() {
  * @see BMI160_RA_INT_STATUS_1
  */
 uint8_t BMI160::getIntStatus1() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_1, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_1, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -1630,7 +1632,7 @@ uint8_t BMI160::getIntStatus1() {
  * @see BMI160_RA_INT_STATUS_2
  */
 uint8_t BMI160::getIntStatus2() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -1641,7 +1643,7 @@ uint8_t BMI160::getIntStatus2() {
  * @see BMI160_RA_INT_STATUS_3
  */
 uint8_t BMI160::getIntStatus3() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -1659,7 +1661,7 @@ uint8_t BMI160::getIntStatus3() {
 bool BMI160::getIntFreefallStatus() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_STATUS_1,
                      BMI160_LOW_G_INT_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1677,7 +1679,7 @@ bool BMI160::getIntFreefallStatus() {
 bool BMI160::getIntTapStatus() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_STATUS_0,
                      BMI160_S_TAP_INT_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1695,7 +1697,7 @@ bool BMI160::getIntTapStatus() {
 bool BMI160::getIntDoubleTapStatus() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_STATUS_0,
                      BMI160_D_TAP_INT_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1713,7 +1715,7 @@ bool BMI160::getIntDoubleTapStatus() {
 bool BMI160::getIntShockStatus() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_STATUS_1,
                      BMI160_HIGH_G_INT_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1724,7 +1726,7 @@ bool BMI160::getIntShockStatus() {
  * @see BMI160_HIGH_G_1ST_X_BIT
  */
 bool BMI160::getXNegShockDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!((status & (1 << BMI160_HIGH_G_SIGN_BIT)) &&
               (status & (1 << BMI160_HIGH_G_1ST_X_BIT)));
@@ -1737,7 +1739,7 @@ bool BMI160::getXNegShockDetected() {
  * @see BMI160_HIGH_G_1ST_X_BIT
  */
 bool BMI160::getXPosShockDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!(!(status & (1 << BMI160_HIGH_G_SIGN_BIT)) &&
               (status & (1 << BMI160_HIGH_G_1ST_X_BIT)));
@@ -1750,7 +1752,7 @@ bool BMI160::getXPosShockDetected() {
  * @see BMI160_HIGH_G_1ST_Y_BIT
  */
 bool BMI160::getYNegShockDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!((status & (1 << BMI160_HIGH_G_SIGN_BIT)) &&
               (status & (1 << BMI160_HIGH_G_1ST_Y_BIT)));
@@ -1763,7 +1765,7 @@ bool BMI160::getYNegShockDetected() {
  * @see BMI160_HIGH_G_1ST_Y_BIT
  */
 bool BMI160::getYPosShockDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!(!(status & (1 << BMI160_HIGH_G_SIGN_BIT)) &&
               (status & (1 << BMI160_HIGH_G_1ST_Y_BIT)));
@@ -1776,7 +1778,7 @@ bool BMI160::getYPosShockDetected() {
  * @see BMI160_HIGH_G_1ST_Z_BIT
  */
 bool BMI160::getZNegShockDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!((status & (1 << BMI160_HIGH_G_SIGN_BIT)) &&
               (status & (1 << BMI160_HIGH_G_1ST_Z_BIT)));
@@ -1789,7 +1791,7 @@ bool BMI160::getZNegShockDetected() {
  * @see BMI160_HIGH_G_1ST_Z_BIT
  */
 bool BMI160::getZPosShockDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_3, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!(!(status & (1 << BMI160_HIGH_G_SIGN_BIT)) &&
               (status & (1 << BMI160_HIGH_G_1ST_Z_BIT)));
@@ -1809,7 +1811,7 @@ bool BMI160::getZPosShockDetected() {
 bool BMI160::getIntStepStatus() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_STATUS_0,
                      BMI160_STEP_INT_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1827,7 +1829,7 @@ bool BMI160::getIntStepStatus() {
 bool BMI160::getIntMotionStatus() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_STATUS_0,
                      BMI160_ANYMOTION_INT_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -1838,7 +1840,7 @@ bool BMI160::getIntMotionStatus() {
  * @see BMI160_ANYMOTION_1ST_X_BIT
  */
 bool BMI160::getXNegMotionDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!((status & (1 << BMI160_ANYMOTION_SIGN_BIT)) &&
               (status & (1 << BMI160_ANYMOTION_1ST_X_BIT)));
@@ -1851,7 +1853,7 @@ bool BMI160::getXNegMotionDetected() {
  * @see BMI160_ANYMOTION_1ST_X_BIT
  */
 bool BMI160::getXPosMotionDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!(!(status & (1 << BMI160_ANYMOTION_SIGN_BIT)) &&
               (status & (1 << BMI160_ANYMOTION_1ST_X_BIT)));
@@ -1864,7 +1866,7 @@ bool BMI160::getXPosMotionDetected() {
  * @see BMI160_ANYMOTION_1ST_Y_BIT
  */
 bool BMI160::getYNegMotionDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!((status & (1 << BMI160_ANYMOTION_SIGN_BIT)) &&
               (status & (1 << BMI160_ANYMOTION_1ST_Y_BIT)));
@@ -1877,7 +1879,7 @@ bool BMI160::getYNegMotionDetected() {
  * @see BMI160_ANYMOTION_1ST_Y_BIT
  */
 bool BMI160::getYPosMotionDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!(!(status & (1 << BMI160_ANYMOTION_SIGN_BIT)) &&
               (status & (1 << BMI160_ANYMOTION_1ST_Y_BIT)));
@@ -1890,7 +1892,7 @@ bool BMI160::getYPosMotionDetected() {
  * @see BMI160_ANYMOTION_1ST_Z_BIT
  */
 bool BMI160::getZNegMotionDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!((status & (1 << BMI160_ANYMOTION_SIGN_BIT)) &&
               (status & (1 << BMI160_ANYMOTION_1ST_Z_BIT)));
@@ -1903,7 +1905,7 @@ bool BMI160::getZNegMotionDetected() {
  * @see BMI160_ANYMOTION_1ST_Z_BIT
  */
 bool BMI160::getZPosMotionDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!(!(status & (1 << BMI160_ANYMOTION_SIGN_BIT)) &&
               (status & (1 << BMI160_ANYMOTION_1ST_Z_BIT)));
@@ -1916,7 +1918,7 @@ bool BMI160::getZPosMotionDetected() {
  * @see BMI160_TAP_1ST_X_BIT
  */
 bool BMI160::getXNegTapDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!((status & (1 << BMI160_TAP_SIGN_BIT)) &&
               (status & (1 << BMI160_TAP_1ST_X_BIT)));
@@ -1929,7 +1931,7 @@ bool BMI160::getXNegTapDetected() {
  * @see BMI160_TAP_1ST_X_BIT
  */
 bool BMI160::getXPosTapDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!(!(status & (1 << BMI160_TAP_SIGN_BIT)) &&
               (status & (1 << BMI160_TAP_1ST_X_BIT)));
@@ -1942,7 +1944,7 @@ bool BMI160::getXPosTapDetected() {
  * @see BMI160_TAP_1ST_Y_BIT
  */
 bool BMI160::getYNegTapDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!((status & (1 << BMI160_TAP_SIGN_BIT)) &&
               (status & (1 << BMI160_TAP_1ST_Y_BIT)));
@@ -1955,7 +1957,7 @@ bool BMI160::getYNegTapDetected() {
  * @see BMI160_TAP_1ST_Y_BIT
  */
 bool BMI160::getYPosTapDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!(!(status & (1 << BMI160_TAP_SIGN_BIT)) &&
               (status & (1 << BMI160_TAP_1ST_Y_BIT)));
@@ -1968,7 +1970,7 @@ bool BMI160::getYPosTapDetected() {
  * @see BMI160_TAP_1ST_Z_BIT
  */
 bool BMI160::getZNegTapDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!((status & (1 << BMI160_TAP_SIGN_BIT)) &&
               (status & (1 << BMI160_TAP_1ST_Z_BIT)));
@@ -1981,7 +1983,7 @@ bool BMI160::getZNegTapDetected() {
  * @see BMI160_TAP_1ST_Z_BIT
  */
 bool BMI160::getZPosTapDetected() {
-    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer);
+    I2CdevMod::readByte(devAddr, BMI160_RA_INT_STATUS_2, buffer, I2Cdev::readTimeout, devWireObj);
     uint8_t status = buffer[0];
     return !!(!(status & (1 << BMI160_TAP_SIGN_BIT)) &&
               (status & (1 << BMI160_TAP_1ST_Z_BIT)));
@@ -2001,7 +2003,7 @@ bool BMI160::getZPosTapDetected() {
 bool BMI160::getIntZeroMotionStatus() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_STATUS_1,
                      BMI160_NOMOTION_INT_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -2015,7 +2017,7 @@ bool BMI160::getIntZeroMotionStatus() {
 bool BMI160::getIntFIFOBufferFullStatus() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_STATUS_1,
                      BMI160_FFULL_INT_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -2029,7 +2031,7 @@ bool BMI160::getIntFIFOBufferFullStatus() {
 bool BMI160::getIntDataReadyStatus() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_STATUS_1,
                      BMI160_DRDY_INT_BIT,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -2042,7 +2044,7 @@ bool BMI160::getIntDataReadyStatus() {
 bool BMI160::getInterruptMode() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_OUT_CTRL,
                      BMI160_INT1_LVL,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !buffer[0];
 }
 
@@ -2055,7 +2057,7 @@ bool BMI160::getInterruptMode() {
 void BMI160::setInterruptMode(bool mode) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_OUT_CTRL,
                    BMI160_INT1_LVL,
-                   1, mode ? 0x0 : 0x1);
+                   1, mode ? 0x0 : 0x1, devWireObj);
 }
 
 /** Get interrupt drive mode.
@@ -2067,7 +2069,7 @@ void BMI160::setInterruptMode(bool mode) {
 bool BMI160::getInterruptDrive() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_OUT_CTRL,
                      BMI160_INT1_OD,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -2080,7 +2082,7 @@ bool BMI160::getInterruptDrive() {
 void BMI160::setInterruptDrive(bool drive) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_OUT_CTRL,
                    BMI160_INT1_OD,
-                   1, drive ? 0x1 : 0x0);
+                   1, drive ? 0x1 : 0x0, devWireObj);
 }
 
 /** Get interrupt latch mode.  The following options are available:
@@ -2117,7 +2119,7 @@ void BMI160::setInterruptDrive(bool drive) {
 uint8_t BMI160::getInterruptLatch() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_LATCH,
                          BMI160_LATCH_MODE_BIT,
-                         BMI160_LATCH_MODE_LEN, buffer);
+                         BMI160_LATCH_MODE_LEN, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -2130,7 +2132,7 @@ uint8_t BMI160::getInterruptLatch() {
 void BMI160::setInterruptLatch(uint8_t mode) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_LATCH,
                    BMI160_LATCH_MODE_BIT,
-                   BMI160_LATCH_MODE_LEN, mode);
+                   BMI160_LATCH_MODE_LEN, mode, devWireObj);
 }
 
 /** Get interrupt enabled status.
@@ -2141,7 +2143,7 @@ void BMI160::setInterruptLatch(uint8_t mode) {
 bool BMI160::getIntEnabled() {
     I2CdevMod::readBits(devAddr, BMI160_RA_INT_OUT_CTRL,
                      BMI160_INT1_OUTPUT_EN,
-                     1, buffer);
+                     1, buffer, I2Cdev::readTimeout, devWireObj);
     return !!buffer[0];
 }
 
@@ -2153,7 +2155,7 @@ bool BMI160::getIntEnabled() {
 void BMI160::setIntEnabled(bool enabled) {
     I2CdevMod::writeBits(devAddr, BMI160_RA_INT_OUT_CTRL,
                    BMI160_INT1_OUTPUT_EN,
-                   1, enabled ? 0x1 : 0);
+                   1, enabled ? 0x1 : 0, devWireObj);
 }
 
 /** Get raw 6-axis motion sensor readings (accel/gyro).
@@ -2169,7 +2171,7 @@ void BMI160::setIntEnabled(bool enabled) {
  * @see BMI160_RA_GYRO_X_L
  */
 void BMI160::getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int16_t* gy, int16_t* gz) {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_X_L, 12, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_X_L, 12, buffer, I2Cdev::readTimeout, devWireObj);
     *gx = (((int16_t)buffer[1])  << 8) | buffer[0];
     *gy = (((int16_t)buffer[3])  << 8) | buffer[2];
     *gz = (((int16_t)buffer[5])  << 8) | buffer[4];
@@ -2215,7 +2217,7 @@ void BMI160::getMotion6(int16_t* ax, int16_t* ay, int16_t* az, int16_t* gx, int1
  * @see BMI160_RA_ACCEL_X_L
  */
 void BMI160::getAcceleration(int16_t* x, int16_t* y, int16_t* z) {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_ACCEL_X_L, 6, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_ACCEL_X_L, 6, buffer, I2Cdev::readTimeout, devWireObj);
     *x = (((int16_t)buffer[1]) << 8) | buffer[0];
     *y = (((int16_t)buffer[3]) << 8) | buffer[2];
     *z = (((int16_t)buffer[5]) << 8) | buffer[4];
@@ -2227,7 +2229,7 @@ void BMI160::getAcceleration(int16_t* x, int16_t* y, int16_t* z) {
  * @see BMI160_RA_ACCEL_X_L
  */
 int16_t BMI160::getAccelerationX() {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_ACCEL_X_L, 2, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_ACCEL_X_L, 2, buffer, I2Cdev::readTimeout, devWireObj);
     return (((int16_t)buffer[1]) << 8) | buffer[0];
 }
 
@@ -2237,7 +2239,7 @@ int16_t BMI160::getAccelerationX() {
  * @see BMI160_RA_ACCEL_Y_L
  */
 int16_t BMI160::getAccelerationY() {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_ACCEL_Y_L, 2, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_ACCEL_Y_L, 2, buffer, I2Cdev::readTimeout, devWireObj);
     return (((int16_t)buffer[1]) << 8) | buffer[0];
 }
 
@@ -2247,7 +2249,7 @@ int16_t BMI160::getAccelerationY() {
  * @see BMI160_RA_ACCEL_Z_L
  */
 int16_t BMI160::getAccelerationZ() {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_ACCEL_Z_L, 2, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_ACCEL_Z_L, 2, buffer, I2Cdev::readTimeout, devWireObj);
     return (((int16_t)buffer[1]) << 8) | buffer[0];
 }
 
@@ -2270,7 +2272,7 @@ int16_t BMI160::getAccelerationZ() {
  * @see BMI160_RA_TEMP_L
  */
 bool BMI160::getTemperature(int16_t* out) {
-    bool ok = I2CdevMod::readBytes(devAddr, BMI160_RA_TEMP_L, 2, buffer) >= 0;
+    bool ok = I2CdevMod::readBytes(devAddr, BMI160_RA_TEMP_L, 2, buffer, I2Cdev::readTimeout, devWireObj) >= 0;
     if (!ok) return false;
     *out = (((int16_t)buffer[1]) << 8) | buffer[0];
     return ok;
@@ -2310,7 +2312,7 @@ bool BMI160::getTemperature(int16_t* out) {
  * @see BMI160_RA_GYRO_X_L
  */
 void BMI160::getRotation(int16_t* x, int16_t* y, int16_t* z) {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_X_L, 6, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_X_L, 6, buffer, I2Cdev::readTimeout, devWireObj);
     *x = (((int16_t)buffer[1]) << 8) | buffer[0];
     *y = (((int16_t)buffer[3]) << 8) | buffer[2];
     *z = (((int16_t)buffer[5]) << 8) | buffer[4];
@@ -2322,7 +2324,7 @@ void BMI160::getRotation(int16_t* x, int16_t* y, int16_t* z) {
  * @see BMI160_RA_GYRO_X_L
  */
 int16_t BMI160::getRotationX() {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_X_L, 2, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_X_L, 2, buffer, I2Cdev::readTimeout, devWireObj);
     return (((int16_t)buffer[1]) << 8) | buffer[0];
 }
 
@@ -2332,7 +2334,7 @@ int16_t BMI160::getRotationX() {
  * @see BMI160_RA_GYRO_Y_L
  */
 int16_t BMI160::getRotationY() {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_Y_L, 2, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_Y_L, 2, buffer, I2Cdev::readTimeout, devWireObj);
     return (((int16_t)buffer[1]) << 8) | buffer[0];
 }
 
@@ -2342,7 +2344,7 @@ int16_t BMI160::getRotationY() {
  * @see BMI160_RA_GYRO_Z_L
  */
 int16_t BMI160::getRotationZ() {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_Z_L, 2, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_GYRO_Z_L, 2, buffer, I2Cdev::readTimeout, devWireObj);
     return (((int16_t)buffer[1]) << 8) | buffer[0];
 }
 
@@ -2352,7 +2354,7 @@ int16_t BMI160::getRotationZ() {
  * @see BMI160_RA_GYRO_Z_L
  */
 void BMI160::getMagnetometer(int16_t* mx, int16_t* my, int16_t* mz) {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_MAG_X_L, 6, buffer);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_MAG_X_L, 6, buffer, I2Cdev::readTimeout, devWireObj);
     // *mx = (((int16_t)buffer[1])  << 8) | buffer[0];
     // *my = (((int16_t)buffer[3])  << 8) | buffer[2];
     // *mz = (((int16_t)buffer[5])  << 8) | buffer[4];
@@ -2362,7 +2364,7 @@ void BMI160::getMagnetometer(int16_t* mx, int16_t* my, int16_t* mz) {
 }
 
 void BMI160::getMagnetometerXYZBuffer(uint8_t* data) {
-    I2CdevMod::readBytes(devAddr, BMI160_RA_MAG_X_L, 6, data);
+    I2CdevMod::readBytes(devAddr, BMI160_RA_MAG_X_L, 6, data, I2Cdev::readTimeout, devWireObj);
 }
 
 /** Read a BMI160 register directly.
@@ -2370,7 +2372,7 @@ void BMI160::getMagnetometerXYZBuffer(uint8_t* data) {
  * @return 8-bit register value
  */
 uint8_t BMI160::getRegister(uint8_t reg) {
-    I2CdevMod::readByte(devAddr, reg, buffer);
+    I2CdevMod::readByte(devAddr, reg, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -2379,11 +2381,11 @@ uint8_t BMI160::getRegister(uint8_t reg) {
  * @param data 8-bit register value
  */
 void BMI160::setRegister(uint8_t reg, uint8_t data) {
-    I2CdevMod::writeByte(devAddr, reg, data);
+    I2CdevMod::writeByte(devAddr, reg, data, devWireObj);
 }
 
 bool BMI160::getGyroDrdy() {
-    I2CdevMod::readBits(devAddr, BMI160_RA_STATUS, BMI160_STATUS_DRDY_GYR, 1, buffer);
+    I2CdevMod::readBits(devAddr, BMI160_RA_STATUS, BMI160_STATUS_DRDY_GYR, 1, buffer, I2Cdev::readTimeout, devWireObj);
     return buffer[0];
 }
 
@@ -2396,20 +2398,20 @@ void BMI160::waitForGyroDrdy() {
 
 void BMI160::waitForAccelDrdy() {
     do {
-        I2CdevMod::readBits(devAddr, BMI160_RA_STATUS, BMI160_STATUS_DRDY_ACC, 1, buffer);
+        I2CdevMod::readBits(devAddr, BMI160_RA_STATUS, BMI160_STATUS_DRDY_ACC, 1, buffer, I2Cdev::readTimeout, devWireObj);
         if (!buffer[0]) delayMicroseconds(150);
     } while (!buffer[0]);
 }
 
 void BMI160::waitForMagDrdy() {
     do {
-        I2CdevMod::readBits(devAddr, BMI160_RA_STATUS, BMI160_STATUS_DRDY_MAG, 1, buffer);
+        I2CdevMod::readBits(devAddr, BMI160_RA_STATUS, BMI160_STATUS_DRDY_MAG, 1, buffer, I2Cdev::readTimeout, devWireObj);
         if (!buffer[0]) delay(5);
     } while (!buffer[0]);
 }
 
 bool BMI160::getSensorTime(uint32_t *v_sensor_time_u32) {
-    bool ok = I2CdevMod::readBytes(devAddr, BMI160_RA_SENSORTIME, 3, buffer) >= 0;
+    bool ok = I2CdevMod::readBytes(devAddr, BMI160_RA_SENSORTIME, 3, buffer, I2Cdev::readTimeout, devWireObj) >= 0;
     if (!ok) return false;
     *v_sensor_time_u32 = (uint32_t)(
         (((uint32_t)buffer[2]) << 16) |

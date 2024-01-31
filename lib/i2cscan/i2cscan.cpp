@@ -111,14 +111,16 @@ namespace I2CSCAN
         return found;
     }
 
-    bool hasDevOnBus(uint8_t addr) {
+    bool hasDevOnBus(uint8_t addr, void *wireObj) {
         byte error;
 #if ESP32C3
         int retries = 2;
         do {
 #endif
-            Wire.beginTransmission(addr);
-            error = Wire.endTransmission();
+            TwoWire *useWire = &Wire;
+            if (wireObj) useWire = (TwoWire *)wireObj;
+            useWire->beginTransmission(addr);
+            error = useWire->endTransmission();
 #if ESP32C3
         }
         while (error != 0 && retries--);
